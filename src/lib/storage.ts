@@ -10,6 +10,10 @@ export interface ScheduleRepository {
   saveBlocks(date: string, blocks: Block[]): Promise<void>
   hasOnboarded(): Promise<boolean>
   setOnboarded(): Promise<void>
+  /** Total blocks and number of distinct days that have at least one block. */
+  countAll(): Promise<{ totalBlocks: number; days: number }>
+  /** Erases every saved block across every date. Does not undo. */
+  clearAll(): Promise<void>
 }
 
 const STORAGE_PREFIX = 'schedule-web:blocks:'
@@ -38,5 +42,27 @@ export const localStorageRepository: ScheduleRepository = {
   },
   async setOnboarded() {
     localStorage.setItem(ONBOARDED_KEY, '1')
+  },
+  async countAll() {
+    let totalBlocks = 0
+    let days = 0
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i)
+      if (!storageKey || !storageKey.startsWith(STORAGE_PREFIX)) continue
+      const blocks = readRaw(storageKey.slice(STORAGE_PREFIX.length))
+      if (blocks.length > 0) {
+        days += 1
+        totalBlocks += blocks.length
+      }
+    }
+    return { totalBlocks, days }
+  },
+  async clearAll() {
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i)
+      if (storageKey && storageKey.startsWith(STORAGE_PREFIX)) keysToRemove.push(storageKey)
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k))
   },
 }
