@@ -41,6 +41,7 @@ export function useSchedule(dateKey: string) {
         startMinutes: start,
         durationMinutes: clampDuration(start, input.durationMinutes),
         category: input.category,
+        customColor: input.customColor,
         notes: input.notes,
         reminderMinutesBefore: input.reminderMinutesBefore,
         createdAt: now,

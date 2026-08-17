@@ -5,6 +5,7 @@ export const PIXELS_PER_MINUTE = 2
 export const PIXELS_PER_HOUR = PIXELS_PER_MINUTE * 60
 export const SNAP_MINUTES = 5
 export const MIN_BLOCK_MINUTES = 5
+export const DEFAULT_DURATION_MINUTES = 30
 /** Blocks shorter than this render as a minimum height so they stay tappable. */
 export const MIN_BLOCK_HEIGHT_PX = 18
 
@@ -72,6 +73,27 @@ export function formatDayHeading(d: Date): { weekday: string; date: string } {
       day: 'numeric',
       year: 'numeric',
     }),
+  }
+}
+
+export function startOfWeek(d: Date): Date {
+  const copy = new Date(d)
+  copy.setDate(copy.getDate() - copy.getDay())
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+export function formatWeekRange(weekStart: Date): { title: string; subtitle: string } {
+  const weekEnd = addDays(weekStart, 6)
+  const sameMonth = weekStart.getMonth() === weekEnd.getMonth()
+  const startLabel = weekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  const endLabel = weekEnd.toLocaleDateString(undefined, {
+    month: sameMonth ? undefined : 'short',
+    day: 'numeric',
+  })
+  return {
+    title: 'This week',
+    subtitle: `${startLabel} – ${endLabel}, ${weekEnd.getFullYear()}`,
   }
 }
 

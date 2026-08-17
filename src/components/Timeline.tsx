@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Block, CategoryId } from '../lib/types'
 import { CATEGORIES } from '../lib/types'
 import {
+  DEFAULT_DURATION_MINUTES,
   MINUTES_IN_DAY,
   MIN_BLOCK_MINUTES,
+  SNAP_MINUTES,
   blockHeight,
   clampDuration,
   clampStart,
+  formatDuration,
   formatHourLabel,
   formatTime,
   layoutBlocks,
@@ -31,11 +34,19 @@ interface DragState {
   previewDuration: number
 }
 
+interface CreateState {
+  anchorMinutes: number
+  currentMinutes: number
+  pointerId: number
+}
+
 interface TimelineProps {
   blocks: Block[]
   isToday: boolean
-  onCreateAt: (startMinutes: number) => void
+  onCreateAt: (startMinutes: number, durationMinutes?: number) => void
   onOpenBlock: (block: Block) => void
+  onContextMenuBlock?: (block: Block, x: number, y: number) => void
+  onContextMenuEmpty?: (startMinutes: number, x: number, y: number) => void
   onCommitBlock: (id: string, patch: { startMinutes: number; durationMinutes: number }) => void
   scrollToNowSignal: number
 }
@@ -45,12 +56,16 @@ export function Timeline({
   isToday,
   onCreateAt,
   onOpenBlock,
+  onContextMenuBlock,
+  onContextMenuEmpty,
   onCommitBlock,
   scrollToNowSignal,
 }: TimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<DragState | null>(null)
+  const [creating, setCreating] = useState<CreateState | null>(null)
+  const [hoverMinutes, setHoverMinutes] = useState<number | null>(null)
   const [now, setNow] = useState(() => minutesNow())
 
   useEffect(() => {
@@ -112,16 +127,66 @@ export function Timeline({
     }
   }
 
-  const handleTrackClick = (e: React.MouseEvent) => {
+  const yToSnappedMinutes = (clientY: number) => {
+    const rect = trackRef.current!.getBoundingClientRect()
+    return clampStart(snapMinutes(yToMinutes(clientY - rect.top)))
+  }
+
+  const handleTrackPointerDown = (e: React.PointerEvent) => {
     if (e.target !== trackRef.current) return
-    const rect = trackRef.current.getBoundingClientRect()
-    const y = e.clientY - rect.top
-    const minutes = clampStart(snapMinutes(yToMinutes(y)))
-    onCreateAt(minutes)
+    if (e.button !== undefined && e.button !== 0) return
+    const minutes = yToSnappedMinutes(e.clientY)
+    setHoverMinutes(null)
+    setCreating({ anchorMinutes: minutes, currentMinutes: minutes, pointerId: e.pointerId })
+    // Only capture for mouse/pen so touch keeps its native scroll gesture available.
+    if (e.pointerType !== 'touch') {
+      trackRef.current?.setPointerCapture(e.pointerId)
+    }
+  }
+
+  const handleTrackPointerMove = (e: React.PointerEvent) => {
+    if (creating && creating.pointerId === e.pointerId) {
+      const minutes = yToSnappedMinutes(e.clientY)
+      setCreating((c) => (c ? { ...c, currentMinutes: minutes } : c))
+      return
+    }
+    if (!drag && !creating && e.pointerType === 'mouse') {
+      setHoverMinutes(yToSnappedMinutes(e.clientY))
+    }
+  }
+
+  const finishCreating = (e: React.PointerEvent) => {
+    if (!creating || creating.pointerId !== e.pointerId) return
+    const start = Math.min(creating.anchorMinutes, creating.currentMinutes)
+    const end = Math.max(creating.anchorMinutes, creating.currentMinutes)
+    const dragged = end - start
+    setCreating(null)
+    if (dragged >= SNAP_MINUTES * 2) {
+      onCreateAt(start, dragged)
+    } else {
+      onCreateAt(creating.anchorMinutes)
+    }
+  }
+
+  const handleTrackPointerLeave = () => {
+    if (!creating) setHoverMinutes(null)
+  }
+
+  const handleTrackContextMenu = (e: React.MouseEvent) => {
+    if (e.target !== trackRef.current || !onContextMenuEmpty) return
+    e.preventDefault()
+    const rect = trackRef.current!.getBoundingClientRect()
+    const minutes = clampStart(snapMinutes(yToMinutes(e.clientY - rect.top)))
+    onContextMenuEmpty(minutes, e.clientX, e.clientY)
   }
 
   const previewLabel = (b: Block) =>
     `${formatTime(b.startMinutes)} – ${formatTime(b.startMinutes + b.durationMinutes)}`
+
+  const createStart = creating ? Math.min(creating.anchorMinutes, creating.currentMinutes) : 0
+  const createEnd = creating ? Math.max(creating.anchorMinutes, creating.currentMinutes) : 0
+  const showCreateGhost = creating && createEnd - createStart >= SNAP_MINUTES * 2
+  const showHover = hoverMinutes !== null && !drag && !creating
 
   return (
     <div ref={scrollRef} className="h-full overflow-y-auto overscroll-contain">
@@ -142,8 +207,13 @@ export function Timeline({
         {/* Track */}
         <div
           ref={trackRef}
-          onClick={handleTrackClick}
-          className="relative flex-1 cursor-crosshair border-l border-slate-200"
+          onPointerDown={handleTrackPointerDown}
+          onPointerMove={handleTrackPointerMove}
+          onPointerUp={finishCreating}
+          onPointerCancel={() => setCreating(null)}
+          onPointerLeave={handleTrackPointerLeave}
+          onContextMenu={handleTrackContextMenu}
+          className="relative flex-1 cursor-crosshair touch-pan-y select-none border-l border-slate-200"
         >
           {HOURS.map((h) => (
             <div
@@ -170,6 +240,35 @@ export function Timeline({
             </div>
           )}
 
+          {showHover && hoverMinutes !== null && (
+            <div
+              className="pointer-events-none absolute inset-x-1 z-0 rounded-md border border-dashed border-slate-300 bg-slate-100/70"
+              style={{
+                top: minutesToY(hoverMinutes),
+                height: minutesToY(DEFAULT_DURATION_MINUTES),
+              }}
+            >
+              <span className="ml-2 mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                </svg>
+                {formatTime(hoverMinutes)}
+              </span>
+            </div>
+          )}
+
+          {showCreateGhost && (
+            <div
+              className="pointer-events-none absolute inset-x-1 z-30 rounded-md border-2 border-indigo-400 bg-indigo-100/80"
+              style={{ top: minutesToY(createStart), height: minutesToY(createEnd - createStart) }}
+            >
+              <div className="px-2 py-1 text-[11px] font-semibold text-indigo-700">
+                {formatTime(createStart)} – {formatTime(createEnd)} ·{' '}
+                {formatDuration(createEnd - createStart)}
+              </div>
+            </div>
+          )}
+
           {laidOut.map(({ block, column, columnCount }) => (
             <ScheduleBlock
               key={block.id}
@@ -183,6 +282,7 @@ export function Timeline({
               previewLabel={drag?.id === block.id ? previewLabel(block) : undefined}
               onOpen={onOpenBlock}
               onDrag={handleDrag}
+              onContextMenu={onContextMenuBlock}
             />
           ))}
         </div>
