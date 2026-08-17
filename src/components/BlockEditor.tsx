@@ -30,6 +30,7 @@ export interface BlockEditorProps {
     startMinutes: number
     durationMinutes: number
     category: CategoryId
+    customColor?: string
     notes?: string
     reminderMinutesBefore?: number
   }
@@ -44,6 +45,7 @@ export function BlockEditor({ mode, initial, onSave, onDelete, onDuplicate, onCl
   const [startMinutes, setStartMinutes] = useState(initial.startMinutes)
   const [durationMinutes, setDurationMinutes] = useState(initial.durationMinutes)
   const [category, setCategory] = useState<CategoryId>(initial.category)
+  const [customColor, setCustomColor] = useState<string | undefined>(initial.customColor)
   const [notes, setNotes] = useState(initial.notes ?? '')
   const [reminder, setReminder] = useState<number | undefined>(initial.reminderMinutesBefore)
   const [customDuration, setCustomDuration] = useState('')
@@ -97,6 +99,7 @@ export function BlockEditor({ mode, initial, onSave, onDelete, onDuplicate, onCl
       startMinutes,
       durationMinutes,
       category,
+      customColor,
       notes: notes.trim() || undefined,
       reminderMinutesBefore: reminder,
     })
@@ -205,17 +208,20 @@ export function BlockEditor({ mode, initial, onSave, onDelete, onDuplicate, onCl
 
         <div className="mb-4">
           <span className="mb-1.5 block text-xs font-medium text-slate-500">Category</span>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {CATEGORIES.map((c) => (
               <button
                 key={c.id}
                 type="button"
-                onClick={() => setCategory(c.id)}
+                onClick={() => {
+                  setCategory(c.id)
+                  setCustomColor(undefined)
+                }}
                 aria-label={c.label}
-                aria-pressed={category === c.id}
+                aria-pressed={category === c.id && !customColor}
                 title={c.label}
                 className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition-all ${
-                  category === c.id ? 'ring-2 ring-offset-1' : 'opacity-60 hover:opacity-100'
+                  category === c.id && !customColor ? 'ring-2 ring-offset-1' : 'opacity-60 hover:opacity-100'
                 }`}
                 style={{
                   backgroundColor: c.color + '1a',
@@ -227,6 +233,39 @@ export function BlockEditor({ mode, initial, onSave, onDelete, onDuplicate, onCl
                 {c.label}
               </button>
             ))}
+
+            <label
+              title="Pick any color"
+              aria-label="Pick a custom color"
+              className={`relative flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full ring-offset-1 transition-all ${
+                customColor ? 'ring-2' : 'opacity-70 hover:opacity-100'
+              }`}
+              style={{
+                background: customColor ?? 'conic-gradient(from 0deg, #f43f5e, #f59e0b, #10b981, #0ea5e9, #6366f1, #ec4899, #f43f5e)',
+                ['--tw-ring-color' as string]: customColor ?? '#94a3b8',
+              }}
+            >
+              {!customColor && (
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
+                  <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                </svg>
+              )}
+              <input
+                type="color"
+                value={customColor ?? '#6366f1'}
+                onChange={(e) => setCustomColor(e.target.value)}
+                className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              />
+            </label>
+            {customColor && (
+              <button
+                type="button"
+                onClick={() => setCustomColor(undefined)}
+                className="text-[12px] font-medium text-slate-400 hover:text-slate-600"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </div>
 

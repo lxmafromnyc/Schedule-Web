@@ -1,3 +1,5 @@
+export type ViewMode = 'day' | 'week'
+
 export type CategoryId =
   | 'focus'
   | 'health'
@@ -35,6 +37,8 @@ export interface Block {
   startMinutes: number
   durationMinutes: number
   category: CategoryId
+  /** Overrides the category color when set, e.g. from the custom color picker. */
+  customColor?: string
   notes?: string
   reminderMinutesBefore?: number
   createdAt: number
@@ -45,4 +49,4 @@ export type NewBlockInput = Pick<
   Block,
   'title' | 'startMinutes' | 'durationMinutes' | 'category'
 > &
-  Partial<Pick<Block, 'notes' | 'reminderMinutesBefore'>>
+  Partial<Pick<Block, 'notes' | 'reminderMinutesBefore' | 'customColor'>>

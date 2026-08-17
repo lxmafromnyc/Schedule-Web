@@ -17,9 +17,11 @@ interface BlockProps {
   previewLabel?: string
   onOpen: (block: BlockType) => void
   onDrag: (id: string, type: DragType, deltaMinutes: number, phase: DragPhase) => void
+  onContextMenu?: (block: BlockType, x: number, y: number) => void
 }
 
 const CLICK_THRESHOLD_PX = 4
+const LONG_PRESS_MS = 480
 
 export function ScheduleBlock({
   block,
@@ -32,28 +34,56 @@ export function ScheduleBlock({
   previewLabel,
   onOpen,
   onDrag,
+  onContextMenu,
 }: BlockProps) {
   const dragOrigin = useRef<{ y: number; type: DragType } | null>(null)
   const [moved, setMoved] = useState(false)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressFired = useRef(false)
+
+  const clearLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }
 
   const startDrag = (e: ReactPointerEvent, type: DragType) => {
     if (e.button !== undefined && e.button !== 0) return
     e.stopPropagation()
     dragOrigin.current = { y: e.clientY, type }
     setMoved(false)
+    longPressFired.current = false
     ;(e.target as Element).setPointerCapture(e.pointerId)
+
+    if (type === 'move' && e.pointerType === 'touch' && onContextMenu) {
+      const { clientX, clientY } = e
+      longPressTimer.current = setTimeout(() => {
+        longPressFired.current = true
+        dragOrigin.current = null
+        onContextMenu(block, clientX, clientY)
+      }, LONG_PRESS_MS)
+    }
   }
 
   const handlePointerMove = (e: ReactPointerEvent) => {
     if (!dragOrigin.current) return
     e.stopPropagation()
     const deltaY = e.clientY - dragOrigin.current.y
-    if (Math.abs(deltaY) > CLICK_THRESHOLD_PX) setMoved(true)
+    if (Math.abs(deltaY) > CLICK_THRESHOLD_PX) {
+      setMoved(true)
+      clearLongPress()
+    }
     const deltaMinutes = yToMinutes(deltaY)
     onDrag(block.id, dragOrigin.current.type, deltaMinutes, 'move')
   }
 
   const handlePointerUp = (e: ReactPointerEvent) => {
+    clearLongPress()
+    if (longPressFired.current) {
+      longPressFired.current = false
+      return
+    }
     if (!dragOrigin.current) return
     e.stopPropagation()
     const deltaY = e.clientY - dragOrigin.current.y
@@ -68,9 +98,18 @@ export function ScheduleBlock({
     setMoved(false)
   }
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    if (!onContextMenu) return
+    e.preventDefault()
+    e.stopPropagation()
+    dragOrigin.current = null
+    onContextMenu(block, e.clientX, e.clientY)
+  }
+
   const tiny = height < 34
   const widthPct = 100 / columnCount
   const leftPct = column * widthPct
+  const color = block.customColor || category.color
 
   return (
     <div
@@ -92,6 +131,7 @@ export function ScheduleBlock({
         onPointerDown={(e) => startDrag(e, 'move')}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onContextMenu={handleContextMenu}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -102,15 +142,15 @@ export function ScheduleBlock({
           isDragging ? 'shadow-lg' : 'hover:shadow-md'
         }`}
         style={{
-          backgroundColor: category.color + '1a',
-          borderColor: category.color + '55',
+          backgroundColor: color + '1a',
+          borderColor: color + '55',
           // Tailwind ring color can't be dynamic via class, set via CSS var.
-          ['--tw-ring-color' as string]: category.color,
+          ['--tw-ring-color' as string]: color,
         }}
       >
         <div
           className="absolute inset-y-0 left-0 w-[3px] rounded-l-lg"
-          style={{ backgroundColor: category.color }}
+          style={{ backgroundColor: color }}
         />
         <div
           className={`flex h-full flex-col gap-0 pl-2.5 pr-1.5 ${
